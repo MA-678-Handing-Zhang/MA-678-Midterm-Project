@@ -1,11 +1,13 @@
 library(tidyverse)
 
-a <- read_csv("/Users/handingzhang/Desktop/mssp/MA 678/MA-678-Midterm-Project/datasets for selectiing/covid/country_vaccinations_by_manufacturer.csv")
-b <- read_csv("/Users/handingzhang/Desktop/mssp/MA 678/MA-678-Midterm-Project/datasets for selectiing/covid/country_vaccinations.csv")
-c <- read_csv("/Users/handingzhang/Desktop/mssp/MA 678/MA-678-Midterm-Project/datasets for selectiing/covid/covid-testing.csv")
-d <- read_csv("/Users/handingzhang/Desktop/mssp/MA 678/MA-678-Midterm-Project/datasets for selectiing/covid/covid-variants.csv")
+
+# Read in the datasets
+# Datasets descriptions are in covid data source link.txt in this folder.
+
+vac_raw <- read_csv("https://raw.githubusercontent.com/MA-678-Handing-Zhang/MA-678-Midterm-Project/main/covid_data/country_vaccinations.csv")
+vac_manu_raw <- read_csv("https://raw.githubusercontent.com/MA-678-Handing-Zhang/MA-678-Midterm-Project/main/covid_data/country_vaccinations_by_manufacturer.csv")
+cov_test_raw <- read_csv("https://raw.githubusercontent.com/MA-678-Handing-Zhang/MA-678-Midterm-Project/main/covid_data/covid-testing.csv")
+cov_vari_raw <- read_csv("https://raw.githubusercontent.com/MA-678-Handing-Zhang/MA-678-Midterm-Project/main/covid_data/covid-variants.csv")
+cov_cases_raw <- read_csv("https://raw.githubusercontent.com/MA-678-Handing-Zhang/MA-678-Midterm-Project/main/covid_data/covid_cases.csv")
 
 
-distinct(a, location)
-distinct(a, vaccine)
-distinct(b, vaccines)
