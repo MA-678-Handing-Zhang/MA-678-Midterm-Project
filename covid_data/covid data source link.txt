@@ -1,0 +1,39 @@
+
+Vaccination Process:
+
+Datasets: country_vaccinations_by_manufacturer.csv
+          country_vaccinations.csv
+
+https://www.kaggle.com/gpreda/covid-world-vaccination-progress?select=country_vaccinations_by_manufacturer.csv
+
+-----------------------------------------------------------------------------------------------------
+
+
+
+Worldwide Evolution:
+
+Dataset: covid-variants.csv
+
+https://www.kaggle.com/gpreda/covid19-variants
+
+
+
+-----------------------------------------------------------------------------------------------------
+
+
+Testing Progress:
+
+Dataset: covid-testing.csv
+
+
+https://www.kaggle.com/gpreda/covid19-world-testing-progress
+
+-----------------------------------------------------------------------------------------------------
+
+Cases and Deaths around the world
+
+Dataset: covid_cases.csv
+
+https://ourworldindata.org/covid-deaths
+
+
