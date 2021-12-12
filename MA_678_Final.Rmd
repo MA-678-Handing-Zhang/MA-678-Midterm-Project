@@ -43,19 +43,12 @@ library(lattice)
 
 
 
-## Abstract (a paragraph): high-level summary of your work.
+## Abstract
+
+I conducted a multilevel linear regression model to find the relationship between the count of likes and certain subset of features of the videos. I used the category of videos as my groups for random effect evaluation. **Research Question:** factors that contribute to the number of likes. **Random Effect** Categories of video. **Fixed effects:** video_age, duration_sec, caption
 
 
-I conducted a multilevel linear regression model to find the relationship between the count of likes and certain subset of features of the videos. I used the category of videos as my groups for random effect evaluation.
-
-### Research Question: factors that contribute to the number of likes.
-
-### Random Effect Categories of video
-
-### fixed effects: video_age, duration_sec, caption
-
-
-## Introduction: Background and other information necessary to understand your work.
+## Introduction:
 
 bbc has a youtube channel where it posts different kinds of videos everyday. Some of the videos receive a lot of likes from viewers while the others not so much. An interesting topic ,then, to study is that what are the factors that influence the number of likes. 
 
@@ -242,7 +235,7 @@ ggarrange(plot1, plot2, nrow = 1)
 ```
 We can see from the plot that in most categories there exists a postive relationship between the duration of a video and the number of the likes it receives. On the other hand, there are usually a negative relationship between days since published and the number of likes, with Autos and Vehicles videos as an exception. It seems the older the video is, the less likes it receives.
 
-## Method: What you did in some detail.
+## Method:
 
 ### Model Fitting
 
@@ -284,16 +277,12 @@ fit_2 <- lmer(log_like ~ log_duration + log_age  +  caption + (1 + log_duration|
 We can see the fixed effects below, all variables are significant at alpha = 0.05 level.
 
 
-Entertainment   8.730573   0.53904341 -0.6348909    1.120828
 
-For Entertainment videos:
+For Entertainment videos as an example for our group category:
 
-\[ y = 8.730573 + 0.53904341\beta_{log-duration}  - 0.6348909\beta_{log-age} + 1.120828\beta_{Caption}  \]
+**\[ y = 8.730573 + 0.53904341\beta_{log-duration}  - 0.6348909\beta_{log-age} + 1.120828\beta_{Caption}  \]**
 
-
-## Discussion: What you think this means and what are the next steps.
-
-
+## Discussion:
 
 The model demonstrates that in general long duration having caption have a positive impact on the average number of likes a video receives when fixing other factors. On the other hand the age of a video has a negative effect on the average number of likes when other components stay the same. Next step: I should conduct more model validations  to optimize my model
 
@@ -311,17 +300,11 @@ mice_plot <- aggr(bbc_raw, col=c('navyblue','yellow'),
 ```
 
 
-
-
-
 ### Detail of Model Fitted
 ```{r}
 summary(fit_2)
 coef(fit_2)
 ```
-
-
-
 
 
 ### Model Validation
@@ -332,12 +315,15 @@ qq <- qqmath(fit_2)
 grid.arrange(re,qq,nrow=1)
 ```
 
+From the qqplot we can see that one limitation of my model is that the residuals do not rigorously follow a normal distribution.
+
 ```{r echo=FALSE, fig.height=2, fig.width=4, fig.cap="Residuals vs Leverage."}
 ggplot(data.frame(lev=hatvalues(fit_2),pearson=residuals(fit_2,type="pearson")),
       aes(x=lev,y=pearson)) +
     geom_point() +
     theme_bw()
 ```
+
 
 ### More EDA
 
@@ -380,3 +366,6 @@ p2
 ## Citation
 
 https://github.com/yurijin98/MA678MidtermProject
+https://www.youtube.com/c/BBCNews
+https://www.kaggle.com/gpreda/bbc-youtube-videos-metadata
+
