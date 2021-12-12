@@ -3,6 +3,7 @@ title: "MA 678 Final Project"
 author: "Handing Zhang"
 date: "12/7/2021"
 output: pdf_document
+fig_caption: yes
 ---
 
 ```{r setup, include=FALSE}
@@ -15,6 +16,7 @@ knitr::opts_chunk$set(
 library(readr)
 library(tidyverse)
 library(stringr)
+library(Rcpp)
 library(rstanarm)
 library(knitr)
 library(magrittr)
@@ -27,7 +29,15 @@ library(gvlma)
 library(lme4)
 library(arm)
 library(lmerTest)
-
+library(ggpubr)
+library(ggridges)
+library(hrbrthemes)
+library(mice)
+library(VIM)
+library(viridisLite)
+library(viridis)
+library(lattice)
+# hrbrthemes::import_roboto_condensed()
 ```
 
 
@@ -35,182 +45,338 @@ library(lmerTest)
 
 ## Abstract (a paragraph): high-level summary of your work.
 
-Research Question: factors that contribute to the number of likes.
-Categories: Categories of video
-fixed effects: video_age, duration_sec, view_count, dislike_count, caption, number of comments
+
+I conducted a multilevel linear regression model to find the relationship between the count of likes and certain subset of features of the videos. I used the category of videos as my groups for random effect evaluation.
+
+### Research Question: factors that contribute to the number of likes.
+
+### Random Effect Categories of video
+
+### fixed effects: video_age, duration_sec, caption
+
 
 ## Introduction: Background and other information necessary to understand your work.
 
-introduce the dataset
-
-## Method: What you did in some detail.
-
-
-
-### Data Cleaning
+bbc has a youtube channel where it posts different kinds of videos everyday. Some of the videos receive a lot of likes from viewers while the others not so much. An interesting topic ,then, to study is that what are the factors that influence the number of likes. 
 
 The dataset I use is published on Kaggle:
 name: ***BBC YouTube Videos Metadata***
 link: https://www.kaggle.com/gpreda/bbc-youtube-videos-metadata
 
 
+| column names                | explanation |
+| :--:                        | :-----      |
+| video_title                 | The title of the video  |
+| days_since_published        | number of days from date of publish to 2021-12-07 |
+| category        | The category of the video |
+| duration_sec                | How long is the  video in  seconds |
+| view_count                  | The number of views |
+| like_count                  | The number of likes of the video |
+| dislike_count               | The number of dislikes of the video |
+| caption                     | Boolean value indicating whether or not there is caption |
+| comment_count               | number of comments |
 
 
+### Data Cleaning
 
-
-| column names      | explanation |
-| :--:              | :----- |
-| video_title             | The title of the video|
-| video_age          | number of days from date of publish to 2021-12-07 |
-| video_category_label         | The category of the video |
-| duration_sec     | How long is the  video in  seconds |
-| view_count          | The number of views |
-| like_count        | The number of likes of the video|
-| dislike_count           | The number of dislikes of the video|
-| caption           | Boolean value indicating whether or not there is caption|
-| comment_count           | number of comments|
-
-
-
+First I performed some data wrangling after reading in the data. I created a new column called "days_since_published", which is the number of days from date of publish to 2021-12-07. 
 ```{r}
-# read in the data.
+# read in the data and do some wrangling.
 bbc <- read_csv("bbc.csv")
 
+# for aappendix use.
+bbc_raw <- bbc
+
+# Keep the columns we need.
 bbc %<>% 
   dplyr::select(published_at, video_title, video_category_label,
          duration_sec, caption, view_count, like_count, dislike_count, comment_count)
 
+# Turn date of publishing into Date class.
 bbc$published_at <- as_date(bbc$published_at)
 
+# Calculate the date since published
 bbc %<>% 
-  mutate(video_age = as_date("2021-12-07") - published_at) %>% 
+  mutate(days_since_published = as_date("2021-12-07") - published_at) %>% 
   dplyr::select(-published_at)# calculate age for each video
 
-bbc$video_age <- as.numeric(bbc$video_age)
 
+bbc$days_since_published <- as.numeric(bbc$days_since_published)
+```
+
+I noticed that there were some NAs in numeric columns. I chose to conducted a multiple imputation on the missing values.
+```{r}
+# sum(is.na(bbc))
+# md.pattern(bbc)
+```
+
+Therefore, I performed a multiple imputation on the missing values of bbc.
+```{r include=FALSE}
+
+
+mice_plot <- aggr(bbc, col=c('navyblue','yellow'),
+                  numbers=TRUE, sortVars=TRUE,
+                  labels = names(bbc), cex.axis=.7,
+                  gap=3, ylab=c("Missing data","Pattern"))
+
+imputed_Data1 <- mice(bbc[, 6:8], m=3, maxit = 50, method = 'pmm', seed = 500)
+summary(imputed_Data1)
+
+# fill the missing values using the result of the multiple imputation.
+bbc_num_imp <- complete(imputed_Data1,2)
+bbc[, 6:8] <- (bbc_num_imp <- complete(imputed_Data1,2))
+
+# make sure there's no more NA.
+# bbc[which(is.na(bbc), arr.ind = T)[,1], ]
+```
+
+I took natural logarithm of several variables: number of comments, number of views, number of likes, number of dislikes and days since published.
+```{r}
 bbc %<>%
   mutate(log_comment = log(comment_count),
          log_view = log(view_count),
          log_like = log(like_count),
-         log_age = log(video_age),
-         )
-# drop NA
-bbc %<>% 
-  drop_na()
+         log_dislike = log(dislike_count),
+         log_age = log(days_since_published),
+         log_duration = log(duration_sec)
+         ) %>% 
+  rename(category = video_category_label)
 
 # drop Inf
 bbc %<>%
   filter(log_comment != -Inf)
+```
 
+```{r}
+# make levels for category for sake of visualization later.
+bbc$category <- factor(c(bbc$category), 
+                                    levels = c("Entertainment",  "Comedy", "Music","Pets & Animals", 
+                                               "Science & Technology", "News & Politics", "Travel & Events",
+                                               "Education", "Howto & Style", "Sports", "Film & Animation", 
+                                               "People & Blogs", "Autos & Vehicles", "Nonprofits & Activism",
+                                               "Gaming"))
 ```
 
 ### EDA
-
-
-```{r echo=FALSE, fig.height=4, fig.width= 10,fig.cap="Data was separate into English talks and not English talks. Different colors represent different categories.talke log of both comments and views to make it more easy to read."}
-ggplot(data = bbc)+
-  aes(log(view_count),log(like_count)) +
-  geom_point(aes(color = video_category_label), alpha = 0.3)+
-  labs(title="number of views vs like count",x="log(number of views)",y="log(like count)")+
-  geom_smooth(aes(color =  video_category_label),method = "lm",se=F)+
-  facet_wrap(~video_category_label)
+```{r fig.height=4, fig.width=10}
+# bbc1 %>% 
+#   count(category, sort = T)
+bbc %>% 
+  ggplot(aes(x = category, fill = category) ) +
+  geom_bar() +
+  scale_x_discrete(guide = guide_axis(n.dodge=3))
 ```
 
-```{r}
-ggplot(data = bbc)+
-  aes(log(video_age),log(like_count)) +
-  geom_point(aes(color = video_category_label), alpha = 0.3)+
-  labs(title="video age vs like count",x="log(video age)",y="log(like count)")+
-  geom_smooth(aes(color =  video_category_label),method = "lm",se=F)+
-  facet_wrap(~video_category_label)
+The two plots below shows the natural logarithms of like counts grouped by 10 quantiles of video duration and days since published.
+```{r quantile plot, fig.height= 4, fig.width= 10, fig.align= "center"}
+getGroup<-function(df,groupby,object,group=10){
+  breaks_quantile<-seq(1/group,1,1/group)
+  break_label<-seq(1,group,1)
+  quantile_df <- bbc %>% summarise(enframe(quantile(groupby, breaks_quantile), "quantile", "value"))
+  df$cut_re <- cut(groupby, c(-Inf,quantile_df$value), labels = break_label)
+  re<-df %>% group_by(cut_re) %>% summarise(mean = mean(log_like), median = median(log_like))
+  return(re)
+}
 
+my_theme = theme_bw() + theme(legend.position="none") + theme(plot.title = element_text(hjust = 0.5))
+
+# getGroup(df = bbc, groupby = bbc$duration_sec, object = bbc$log_like)
+
+plot_a <- getGroup(df = bbc, groupby = bbc$duration_sec, object = log_like) %>% 
+  ggplot(aes(y = mean,x=factor(cut_re))) +
+  geom_bar(aes(colour=factor(cut_re)),fill=NA,stat='identity')+coord_cartesian(ylim = c(5,10)) + 
+    geom_text(aes(label = round(mean,2)),vjust=1.5)+labs(title='Video Duration Quantile Group',x='',y='log(like)') + my_theme
+
+plot_b <- getGroup(df = bbc,groupby = bbc$log_age ,object= bbc$log_like) %>% 
+  ggplot(aes(y=mean,x=factor(cut_re))) + 
+  geom_bar(aes(colour=factor(cut_re)),fill=NA,stat='identity')+coord_cartesian(ylim = c(5,10)) + 
+  geom_text(aes(label = round(mean,2)),vjust=1.5)+labs(title='Days since Published Quantile Group',x='',y='log(like)') + my_theme
+
+plot_c <- getGroup(df = bbc,groupby = bbc$comment_count ,object= bbc$log_like) %>% 
+  ggplot(aes(y=mean,x=factor(cut_re))) + 
+  geom_bar(aes(colour=factor(cut_re)),fill=NA,stat='identity')+coord_cartesian(ylim = c(5,10)) + 
+  geom_text(aes(label = round(mean,2)),vjust=1.5)+labs(title='Number of Comment Quantile Group',x='',y='log(like)') + my_theme
+
+ggarrange(plot_a, plot_b, plot_c, nrow = 1)
+```
+
+The boxplot shows the distribution of natural logarithms of like counts against whether or not a video has caption.
+```{r caption, fig.height= 4, fig.width= 10}
+plot3 <- bbc %>%
+  ggplot( aes(x = caption, y = log(like_count), fill = caption)) +
+    geom_boxplot() +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    # theme_ipsum() +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("Caption vs NO Caption") +
+    xlab("Caption") +
+    ylab("log of like counts")
+
+plot3
 ```
 
 
+The following two plots shows a general relationship between duration, days since published and number of likes received by a video.
+```{r fig.height=4, fig.width=10, message=FALSE, warning=FALSE, include=FALSE}
 
-```{r comment_count}
+plot1 <- ggplot(data = bbc)+
+  aes(log_duration, log_like) +
+  geom_point(aes(color = category), alpha = 0.3)+
+  labs(title="Log Duration vs Log Like Count",x="log(duration)",y="log(like count)")+
+  geom_smooth(aes(color =  category),method = "lm",se=F) #+
+  facet_wrap(~category)
 
-ggplot(data = bbc) +
-  aes(log(comment_count), log(like_count)) +
-  geom_point(aes(color = video_category_label), alpha = 0.3)+
-  labs(title="comment count vs like count",x="log(comment count)",y="log(like count)")+
-  geom_smooth(aes(color =  video_category_label),method = "lm", se=F) # +
-  # facet_wrap(~video_category_label)
-
+plot2 <- ggplot(data = bbc) +
+  aes(log_age, log_like) +
+  geom_point(aes(color = category), alpha = 0.3)+
+  labs(title="Log Days since Published vs Log Like count",x="log(video age)",y="log(like count)")+
+  geom_smooth(aes(color =  category),method = "lm", se=F) # +
+  # facet_wrap(~category)
 ```
 
-
-```{r caption}
-
-ggplot(data = bbc)+
-  aes(caption, log(like_count)) +
-  geom_point(aes(color = video_category_label), alpha = 0.3)+
-  labs(title="comment count vs like count",x="log(comment count)",y="log(like count)")+
-  geom_smooth(aes(color =  video_category_label),method = "lm", se=F) # +
-  # facet_wrap(~video_category_label)
-
+```{r, fig.height=4, fig.width=10}
+ggarrange(plot1, plot2, nrow = 1)
 ```
+We can see from the plot that in most categories there exists a postive relationship between the duration of a video and the number of the likes it receives. On the other hand, there are usually a negative relationship between days since published and the number of likes, with Autos and Vehicles videos as an exception. It seems the older the video is, the less likes it receives.
 
+## Method: What you did in some detail.
 
 ### Model Fitting
 
-
+I fitted a multilevel model with duration, days since published and caption as my fixed effects, where I combined duration and random effects in my model.
 ```{r}
 
 
-# fit_bbc <- lmer(log_like ~ log_comment + log_age + log_view + (1 + log_comment|video_category_label) + (1 + log_age|video_category_label)+(1+log_view|video_category_label), data = bbc)
+
+# fit_bbc <- lmer(log_like ~ log_comment + log_age + log_view + (1 + log_comment|category), data = bbc)
+# summary(fit_bbc)
+# coef(fit_bbc)
 
 
-fit_bbc <- lmer(log_like ~ log_comment + log_age + log_view + (1|video_category_label), data = bbc)
-summary(fit_bbc)
-coef(fit_bbc)
+fit_2 <- lmer(log_like ~ log_duration + log_age  +  caption + (1 + log_duration|category), data = bbc)
 
 
+# check_model(fit_bbcc)
+
+# ranef(fit_bbc)
+# pp check
+# summary(fit_2)
+# coef(fit_2)
 ```
 
+
+** fit_2 <- lmer(log_like ~ log_duration + log_age  +  caption + (1 + log_duration|category), data = bbc) ** 
 
 
 ## Result: What you found.
 
 
+|                |Estimate   |Std. Error  |df        |t value |Pr(>&#124;t&#124;) |
+|:---:           |:---:      |:---:       |:---:     |:---:   |:---:              |
+|(Intercept)     |9.282e+00    |7.161e-01        |1.642e+01    | 12.962  |4.79e-10 ***      |
+|log_duration    |4.075e-01       |1.279e-01        | 1.335e+01    |3.186   |0.00695 **       |
+|log_age         |-6.349e-01       |  2.925e-02      | 1.240e+04   |-21.709   |< 2e-16 ***     |
+|CaptionTRUE     |1.121e+00       |  6.302e-02     | 1.242e+04   |17.785  | < 2e-16 ***       |
+
+We can see the fixed effects below, all variables are significant at alpha = 0.05 level.
+
+
+Entertainment   8.730573   0.53904341 -0.6348909    1.120828
+
+For Entertainment videos:
+
+\[ y = 8.730573 + 0.53904341\beta_{log-duration}  - 0.6348909\beta_{log-age} + 1.120828\beta_{Caption}  \]
+
 
 ## Discussion: What you think this means and what are the next steps.
 
 
+
+The model demonstrates that in general long duration having caption have a positive impact on the average number of likes a video receives when fixing other factors. On the other hand the age of a video has a negative effect on the average number of likes when other components stay the same. Next step: I should conduct more model validations  to optimize my model
+
+
+
+## Appendix
+
+### Missing Value in Data before Multiple Imputation
+```{r}
+mice_plot <- aggr(bbc_raw, col=c('navyblue','yellow'),
+                  numbers=TRUE, sortVars=TRUE,
+                  labels = names(bbc), cex.axis=.7,
+                  gap=3, ylab=c("Missing data","Pattern"))
+
+```
+
+
+
+
+
+### Detail of Model Fitted
+```{r}
+summary(fit_2)
+coef(fit_2)
+```
+
+
+
+
+
+### Model Validation
+```{r echo=FALSE, fig.height=2.5, fig.width=6, fig.cap="Residual plot and Q-Q plot."}
+#binnedplot(fitted(fit4),resid(fit4))
+re <- plot(fit_2)
+qq <- qqmath(fit_2)
+grid.arrange(re,qq,nrow=1)
+```
+
+```{r echo=FALSE, fig.height=2, fig.width=4, fig.cap="Residuals vs Leverage."}
+ggplot(data.frame(lev=hatvalues(fit_2),pearson=residuals(fit_2,type="pearson")),
+      aes(x=lev,y=pearson)) +
+    geom_point() +
+    theme_bw()
+```
+
+### More EDA
+
+```{r echo=FALSE, fig.height=4, fig.width=10}
+ggplot(bbc, aes(x = days_since_published, y = category, fill = category)) +
+  geom_density_ridges() +
+  theme_ridges() +
+  theme(legend.position = "none") +
+  labs(title = "like counts vs days since published", x = "Days since Published", y = "Like Counts")
+```
+
+```{r}
+# 
+# year_duration_plot<-getGroup(df=df1,groupby=df1$year_duration,object=price_usd_log,group=10) %>% ggplot(aes(y=mean,x=factor(cut_re))) + 
+#   geom_bar(mapping = aes(colour=factor(cut_re)),fill=NA,stat='identity')+coord_cartesian(ylim = c(5,10))+geom_text(aes(label = round(mean,2)),vjust=1.5)+labs(title='Year Duration Group Sort',x='',y='log(price)')+my_theme
+# 
+# number_of_photo_plot<-getGroup(df=df1,groupby=df1$number_of_photos,object=price_usd_log,group=10) %>% ggplot(aes(y=mean,x=factor(cut_re))) + 
+#   geom_bar(mapping = aes(colour=factor(cut_re)),fill=NA,stat='identity')+coord_cartesian(ylim = c(5,10))+geom_text(aes(label = round(mean,2)),vjust=1.5)+labs(title='Photo Number Group Sort',x='',y='log(price)')+my_theme
+# 
+# 
+# feature<-df1 %>% group_by(feature) %>% summarise(mean=mean(price_usd_log)) %>% ggplot(aes(y=mean,x=factor(feature))) + 
+#   geom_bar(mapping = aes(colour=factor(feature)),fill=NA,stat='identity')+coord_cartesian(ylim = c(5,10))+geom_text(aes(label = round(mean,2)),vjust=1.5)+labs(title='Feature Group Sort',x='',y='log(price)')+my_theme
+# 
+# 
+# mylay<-lay_new(mat=matrix(1:4,ncol=2))
+# plot1<-list(odometer_plot,year_duration_plot,feature,engine_capacity_plot)
+# lay_grid(plot1,mylay)
+
+```
+
+
+```{r, fig.height= 4, fig.width= 10}
+p2 <- ggplot(bbc, aes(x = log_like, group = category, fill = category)) +
+    geom_density(adjust=1.5, alpha=.4)# +
+    # theme_ipsum()
+p2
+```
+
+
 ## Citation
 
-
-```{r}
-
-
-
-
-```
-
-
-```{r}
-
-
-
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-
-
-
+https://github.com/yurijin98/MA678MidtermProject
